@@ -3,91 +3,104 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# --- CẤU HÌNH GIAO DIỆN ---
-st.set_page_config(page_title="HSE Report Dashboard", layout="wide")
+# --- 1. CẤU HÌNH ---
+st.set_page_config(page_title="HSE Smart Dashboard", layout="wide")
 
-# --- HÀM XỬ LÝ DỮ LIỆU ---
 def process_data(df):
-    # Tính tỷ lệ hoàn thành theo công thức:
-    # Ty_le = (Hoàn thành / Giao bài) * 100
-    df['Ty_le_Hoan_Thanh'] = (df['Tong_Hoan_Thanh'] / df['Tong_Luot_Giao_Bai'] * 100).round(2)
-    df['Ty_le_Hoan_Thanh'] = df['Ty_le_Hoan_Thanh'].fillna(0) # Xử lý lỗi chia cho 0
+    # Xử lý tiêu đề: Xóa khoảng trắng thừa và chuyển về string
+    df.columns = [str(c).strip() for c in df.columns]
+    
+    # Kiểm tra các cột cần thiết (Case-sensitive: Phải khớp từng chữ)
+    required_cols = ['Lớp', 'Môn', 'Tong_Luot_Giao_Bai', 'Tong_Hoan_Thanh']
+    
+    # Tìm xem có cột nào bị thiếu không
+    missing = [c for c in required_cols if c not in df.columns]
+    
+    if missing:
+        st.error(f"❌ Không tìm thấy cột: {', '.join(missing)}")
+        st.info(f"Các cột hiện có trong file của bạn là: {list(df.columns)}")
+        st.warning("Mẹo: Hãy kiểm tra xem tên cột trong Excel có đúng là 'Tong_Luot_Giao_Bai' và 'Tong_Hoan_Thanh' không.")
+        st.stop()
+    
+    # Chuyển đổi dữ liệu sang dạng số (tránh lỗi nếu có ô trống hoặc chữ)
+    df['Tong_Luot_Giao_Bai'] = pd.to_numeric(df['Tong_Luot_Giao_Bai'], errors='coerce').fillna(0)
+    df['Tong_Hoan_Thanh'] = pd.to_numeric(df['Tong_Hoan_Thanh'], errors='coerce').fillna(0)
+    
+    # Tính tỷ lệ %
+    df['Ty_le'] = (df['Tong_Hoan_Thanh'] / df['Tong_Luot_Giao_Bai'] * 100).round(1)
+    df['Ty_le'] = df['Ty_le'].replace([float('inf'), -float('inf')], 0).fillna(0)
+    
     return df
 
-# --- TẢI DỮ LIỆU ---
-st.title("📊 Hệ thống Phân tích Phản hồi HSE Chi tiết")
+# --- 2. GIAO DIỆN TẢI FILE ---
+st.title("📊 Báo cáo Học tập theo Lớp")
 
-# Cho phép người dùng tải file lên hoặc tự động đọc file tên 'Bao_Cao_HSE_Phan_Hoi_Chi_Tiet.xlsx'
-uploaded_file = st.file_uploader("Tải lên file Excel báo cáo:", type=["xlsx"])
+uploaded_file = st.file_uploader("Bước 1: Tải file Bao_Cao_HSE_Phan_Hoi_Chi_Tiet.xlsx", type=["xlsx"])
 
-if uploaded_file is not None:
-    df_raw = pd.read_excel(uploaded_file)
-    df = process_data(df_raw)
+if uploaded_file:
+    # Đọc file (mặc định lấy sheet đầu tiên)
+    raw_df = pd.read_excel(uploaded_file)
+    df = process_data(raw_df)
 else:
-    try:
-        df_raw = pd.read_excel("BC_HSE.xlsx")
-        df = process_data(df_raw)
-        st.info("✅ Đang sử dụng dữ liệu từ file: Bao_Cao_HSE_Phan_Hoi_Chi_Tiet.xlsx")
-    except FileNotFoundError:
-        st.warning("⚠️ Vui lòng tải file Excel lên hoặc để file 'Bao_Cao_HSE_Phan_Hoi_Chi_Tiet.xlsx' cùng thư mục với code.")
-        st.stop()
+    st.info("👆 Vui lòng tải file Excel lên để xem báo cáo.")
+    st.stop()
 
-# --- BỘ LỌC (SIDEBAR) ---
-st.sidebar.header("🔍 Bộ lọc báo cáo")
-selected_class = st.sidebar.selectbox("Chọn Lớp:", ["Tất cả"] + sorted(df['Lớp'].unique().tolist()))
+# --- 3. THANH DROPDOWN CHỌN LỚP ---
+st.sidebar.header("Bộ lọc")
+list_classes = sorted(df['Lớp'].unique().tolist())
+selected_class = st.sidebar.selectbox("🎯 Chọn Lớp để xem chi tiết:", list_classes)
 
-if selected_class != "Tất cả":
-    df_filtered = df[df['Lớp'] == selected_class]
-else:
-    df_filtered = df
+# Lọc dữ liệu cho lớp được chọn
+class_df = df[df['Lớp'] == selected_class]
+avg_school = df['Ty_le'].mean()
+avg_class = class_df['Ty_le'].mean()
 
-selected_subject = st.sidebar.selectbox("Chọn Môn:", ["Tất cả"] + sorted(df_filtered['Môn'].unique().tolist()))
+# --- 4. HIỂN THỊ Ý KIẾN & NHẬN XÉT ---
+st.header(f"📝 Nhận xét báo cáo: {selected_class}")
 
-if selected_subject != "Tất cả":
-    df_filtered = df_filtered[df_filtered['Môn'] == selected_subject]
+col_note, col_chart = st.columns([1, 2])
 
-# --- HIỂN THỊ CHỈ SỐ TỔNG QUAN ---
-total_assigned = df_filtered['Tong_Luot_Giao_Bai'].sum()
-total_done = df_filtered['Tong_Hoan_Thanh'].sum()
-avg_rate = (total_done / total_assigned * 100).round(2) if total_assigned > 0 else 0
+with col_note:
+    st.subheader("💡 Phân tích nhanh")
+    
+    # Nhận xét về hiệu suất
+    diff = avg_class - avg_school
+    status = "CAO HƠN" if diff > 0 else "THẤP HƠN"
+    color = "green" if diff > 0 else "red"
+    
+    st.markdown(f"Hiệu suất trung bình của lớp là **{avg_class:.1f}%**, "
+                f"<{span style='color:{color}'>**{status}**</span> bình quân toàn trường ({avg_school:.1f}%).")
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Tổng bài đã giao", f"{total_assigned:,}")
-c2.metric("Tổng hoàn thành", f"{total_done:,}")
-c3.metric("Hiệu suất trung bình", f"{avg_rate}%")
+    # Môn tốt nhất / yếu nhất
+    best = class_df.loc[class_df['Ty_le'].idxmax()]
+    worst = class_df.loc[class_df['Ty_le'].idxmin()]
+    
+    st.write(f"✅ **Môn hoàn thành tốt nhất:** {best['Môn']} ({best['Ty_le']}%)")
+    st.write(f"⚠️ **Môn cần đôn đốc thêm:** {worst['Môn']} ({worst['Ty_le']}%)")
 
+    # Cảnh báo môn dưới 50%
+    danger_zone = class_df[class_df['Ty_le'] < 50]['Môn'].tolist()
+    if danger_zone:
+        st.error(f"🚨 Cảnh báo môn học yếu (<50%): {', '.join(danger_zone)}")
+
+with col_chart:
+    # Biểu đồ cột tỷ lệ % của lớp đó
+    fig = px.bar(class_df, x='Môn', y='Ty_le', text='Ty_le', 
+                 color='Ty_le', color_continuous_scale='RdYlGn',
+                 range_color=[0, 100], title=f"Tỷ lệ hoàn thành lớp {selected_class}")
+    st.plotly_chart(fig, use_container_width=True)
+
+# --- 5. SO SÁNH SỐ LƯỢNG CHI TIẾT ---
 st.divider()
+st.subheader("📋 Chi tiết số lượng Bài giao & Hoàn thành")
 
-# --- BIỂU ĐỒ TƯƠNG TÁC ---
-col_left, col_right = st.columns(2)
+fig_compare = go.Figure(data=[
+    go.Bar(name='Số lượng giao', x=class_df['Môn'], y=class_df['Tong_Luot_Giao_Bai'], marker_color='#3498db'),
+    go.Bar(name='Đã hoàn thành', x=class_df['Môn'], y=class_df['Tong_Hoan_Thanh'], marker_color='#2ecc71')
+])
+fig_compare.update_layout(barmode='group', height=400)
+st.plotly_chart(fig_compare, use_container_width=True)
 
-with col_left:
-    st.subheader("📊 Khối lượng Giao bài vs Hoàn thành")
-    # Sử dụng Bar Chart để so sánh
-    fig_bar = px.bar(df_filtered, x='Môn' if selected_class != "Tất cả" else 'Lớp', 
-                     y=['Tong_Luot_Giao_Bai', 'Tong_Hoan_Thanh'],
-                     barmode='group', title="So sánh số lượng bài",
-                     color_discrete_sequence=['#1f77b4', '#2ca02c'])
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-with col_right:
-    st.subheader("📈 Tỷ lệ Hoàn thành (%)")
-    # Biểu đồ đường thể hiện hiệu suất
-    fig_line = px.line(df_filtered, x='Môn' if selected_class != "Tất cả" else 'Lớp', 
-                       y='Ty_le_Hoan_Thanh', markers=True, 
-                       title="Hiệu suất học tập theo %",
-                       color_discrete_sequence=['#ff7f0e'])
-    st.plotly_chart(fig_line, use_container_width=True)
-
-# --- BẢN ĐỒ NHIỆT (HEATMAP) ---
-if selected_class == "Tất cả":
-    st.divider()
-    st.subheader("🌡️ Bản đồ nhiệt Hiệu suất (Lớp vs Môn)")
-    heat_data = df.pivot_table(index='Lớp', columns='Môn', values='Ty_le_Hoan_Thanh').fillna(0)
-    fig_heat = px.imshow(heat_data, text_auto=True, color_continuous_scale='RdYlGn', 
-                         aspect="auto", title="Độ đậm nhạt thể hiện % hoàn thành")
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-# --- BẢNG DỮ LIỆU ---
-with st.expander("📝 Xem bảng dữ liệu chi tiết"):
-    st.write(df_filtered)
+# Hiển thị bảng dữ liệu cuối trang
+with st.expander("Xem bảng dữ liệu gốc của lớp"):
+    st.dataframe(class_df[['Môn', 'Tong_Luot_Giao_Bai', 'Tong_Hoan_Thanh', 'Ty_le']])
