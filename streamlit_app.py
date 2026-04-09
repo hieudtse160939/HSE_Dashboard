@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
-import os
 
 # --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="HSE Master Dashboard", layout="wide")
@@ -19,7 +18,7 @@ def process_data(df, df_gv=None):
     df['Tong_Luot_Giao_Bai'] = pd.to_numeric(df['Tong_Luot_Giao_Bai'], errors='coerce').fillna(0)
     df['Tong_Hoan_Thanh'] = pd.to_numeric(df['Tong_Hoan_Thanh'], errors='coerce').fillna(0)
     
-    # CHUẨN HÓA DỮ LIỆU ĐỂ MERGE KHÔNG BỊ LỖI (Xóa khoảng trắng thừa, in hoa Lớp)
+    # CHUẨN HÓA DỮ LIỆU ĐỂ MERGE KHÔNG BỊ LỖI
     df['Lớp'] = df['Lớp'].astype(str).str.strip().str.upper()
     df['Môn'] = df['Môn'].astype(str).str.strip()
     
@@ -53,7 +52,7 @@ def process_data(df, df_gv=None):
             df_gv_unique = df_gv[['Lớp', 'Môn', 'Giáo Viên']].drop_duplicates()
             df = pd.merge(df, df_gv_unique, on=['Lớp', 'Môn'], how='left')
         else:
-            st.warning("File GVBM cần có các cột: 'Lớp', 'Môn', và 'Giáo Viên'")
+            st.warning("Dữ liệu Giáo viên từ GitHub thiếu cột. Cần có: 'Lớp', 'Môn', và 'Giáo Viên'")
             
     # Xử lý trường hợp không có tên giáo viên
     if 'Giáo Viên' not in df.columns:
@@ -114,42 +113,31 @@ st.title("🛡️ Hệ thống Quản lý & Phân tích HSE")
 
 st.sidebar.header("📂 Tải Dữ Liệu")
 
-# 1. Đọc file HSE chính
-uploaded_file = st.sidebar.file_uploader("1. Báo cáo HSE (Excel)", type=["xlsx"])
+# 1. Đọc file HSE chính (Do user upload)
+uploaded_file = st.sidebar.file_uploader("Tải lên Báo cáo HSE (Excel)", type=["xlsx"])
 
-# 2. Đọc file Giáo viên (Ưu tiên: GitHub -> Upload -> File Local)
-st.sidebar.markdown("---")
-st.sidebar.markdown("**2. Dữ liệu Giáo viên (GVBM.xlsx)**")
-github_url = st.sidebar.text_input("🔗 Link GitHub (Raw URL) nếu có:", placeholder="https://raw.githubusercontent.com/...")
-uploaded_gv = st.sidebar.file_uploader("Hoặc tải file lên:", type=["xlsx", "csv"])
+# 2. Tự động đọc dữ liệu Giáo viên từ link GitHub của bạn (Chạy ngầm, không cần thao tác)
+GV_DATA_URL = "https://raw.githubusercontent.com/hieudtse160939/HSE_Dashboard/a521cfd39d4b59e0e7af63db9e140f61c9e84a56/BM1.xlsx"
 
-df_gv = None
-try:
-    if github_url:
-        if "csv" in github_url.lower():
-            df_gv = pd.read_csv(github_url, header=None, usecols=[0, 1, 2], names=['Lớp', 'Giáo Viên', 'Môn'])
-        else:
-            df_gv = pd.read_excel(github_url)
-        st.sidebar.success("✅ Đã tải GV từ GitHub!")
-    elif uploaded_gv:
-        if uploaded_gv.name.endswith('.csv'):
-            df_gv = pd.read_csv(uploaded_gv, header=None, usecols=[0, 1, 2], names=['Lớp', 'Giáo Viên', 'Môn'])
-        else:
-            df_gv = pd.read_excel(uploaded_gv)
-        st.sidebar.success("✅ Đã tải file GV upload!")
-    elif os.path.exists("GVBM.xlsx"):
-        df_gv = pd.read_excel("GVBM.xlsx")
-        st.sidebar.success("✅ Đã tự động đọc file **GVBM.xlsx** có sẵn trong máy!")
-    else:
-        st.sidebar.info("Đang thiếu dữ liệu Giáo viên. Hãy tải file lên hoặc đặt file GVBM.xlsx vào cùng thư mục.")
-except Exception as e:
-    st.sidebar.error(f"Lỗi đọc file Giáo viên: {e}")
+@st.cache_data(show_spinner=False)
+def load_gv_data():
+    try:
+        return pd.read_excel(GV_DATA_URL)
+    except Exception as e:
+        return None
+
+df_gv = load_gv_data()
+if df_gv is not None:
+    st.sidebar.success("✅ Đã đồng bộ dữ liệu Giáo viên từ GitHub!")
+else:
+    st.sidebar.error("❌ Không thể lấy dữ liệu Giáo viên từ GitHub. Kiểm tra lại đường link.")
 
 # Xử lý gộp dữ liệu
 if uploaded_file:
-    df = process_data(pd.read_excel(uploaded_file), df_gv)
+    with st.spinner('Đang xử lý dữ liệu...'):
+        df = process_data(pd.read_excel(uploaded_file), df_gv)
 else:
-    st.info("👈 Vui lòng tải dữ liệu báo cáo HSE (Excel) ở thanh bên trái để bắt đầu.")
+    st.info("👈 Vui lòng tải dữ liệu Báo cáo HSE ở thanh bên trái để bắt đầu.")
     st.stop()
 
 # --- 3. BỘ LỌC & NÚT TẢI ---
