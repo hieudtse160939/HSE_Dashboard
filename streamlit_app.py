@@ -184,30 +184,10 @@ if selected_class == "Tất cả các lớp" and selected_teacher == "Tất cả
             c3.metric("Lớp thấp nhất", f"{class_rank.iloc[-1]['Lớp']} ({class_rank.iloc[-1]['Ty_le_TB']}%)")
 
         st.divider()
-        # --- BUBBLE CHART THAY CHO HEATMAP ---
-        st.subheader("🫧 Phân bổ Hiệu suất theo Lớp & Môn (Bubble Chart)")
-        
-        # Chỉ lấy các dòng có số lượng bài giao > 0 để tránh bong bóng rỗng
-        df_bubble = df[df['Tong_Luot_Giao_Bai'] > 0]
-        
-        fig_bubble = px.scatter(
-            df_bubble, 
-            x='Lớp', 
-            y='Môn', 
-            size='Tong_Luot_Giao_Bai', 
-            color='Ty_le',
-            color_continuous_scale='RdYlGn',
-            hover_name='Giáo Viên',
-            size_max=45, # Tăng giảm số này để bong bóng to/nhỏ tùy ý
-            labels={'Tong_Luot_Giao_Bai': 'Số bài giao', 'Ty_le': 'Tỷ lệ hoàn thành (%)'}
-        )
-        fig_bubble.update_layout(
-            xaxis_title="Lớp học", 
-            yaxis_title="Môn học",
-            height=600 # Tăng chiều cao để các môn không bị ép vào nhau
-        )
-        st.plotly_chart(fig_bubble, use_container_width=True)
-        # ------------------------------------
+        st.subheader("🌡️ Bản đồ nhiệt (Heatmap) Toàn trường")
+        heatmap_data = df.pivot_table(index='Lớp', columns='Môn', values='Ty_le').fillna(0)
+        fig_heat = px.imshow(heatmap_data, text_auto=True, color_continuous_scale='RdYlGn', aspect="auto")
+        st.plotly_chart(fig_heat, use_container_width=True)
         
     with tab_gv:
         st.subheader("Bảng Xếp hạng Giáo viên")
