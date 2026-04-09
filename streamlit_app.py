@@ -26,32 +26,32 @@ html, body, [class*="css"] {
 /* ── Ẩn decoration mặc định ── */
 #MainMenu, footer, header { visibility: hidden; }
 
-/* ── Luôn hiện nút đóng/mở sidebar ── */
-[data-testid="collapsedControl"] {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    background: #1A2E5A !important;
-    border-radius: 0 8px 8px 0 !important;
-    border: 1px solid #2a4a8a !important;
-    border-left: none !important;
-    width: 1.6rem !important;
-    height: 2.4rem !important;
-    top: 1rem !important;
-    align-items: center !important;
-    justify-content: center !important;
-    box-shadow: 2px 2px 8px rgba(0,0,0,0.2) !important;
-    transition: background 0.2s !important;
-    cursor: pointer !important;
+/* ── Nút toggle sidebar tùy chỉnh ── */
+#sidebar-toggle-btn {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 99999;
+    width: 38px;
+    height: 38px;
+    background: #1A2E5A;
+    border: 1px solid #2a4a8a;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    transition: background 0.2s, transform 0.15s;
 }
-[data-testid="collapsedControl"]:hover {
-    background: #C8102E !important;
+#sidebar-toggle-btn:hover {
+    background: #C8102E;
+    transform: scale(1.07);
 }
-[data-testid="collapsedControl"] svg {
-    color: #f1f5f9 !important;
-    fill: #f1f5f9 !important;
-    width: 1rem !important;
-    height: 1rem !important;
+#sidebar-toggle-btn svg {
+    width: 18px; height: 18px;
+    stroke: #f1f5f9; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 
 /* ── Sidebar ── */
@@ -237,6 +237,38 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 1.2rem 0; }
     border-radius: 10px !important;
 }
 </style>
+""", unsafe_allow_html=True)
+
+
+# ── Inject nút toggle sidebar bằng JavaScript ──
+st.markdown("""
+<div id="sidebar-toggle-btn" title="Mở/đóng menu" onclick="toggleSidebar()">
+    <svg viewBox="0 0 24 24">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+</div>
+<script>
+function toggleSidebar() {
+    const candidates = [
+        '[data-testid="collapsedControl"] button',
+        'button[aria-label="Close sidebar"]',
+        'button[aria-label="Open sidebar"]',
+        '[data-testid="stSidebarNav"] + div button',
+    ];
+    for (const sel of candidates) {
+        const btn = window.parent.document.querySelector(sel);
+        if (btn) { btn.click(); return; }
+    }
+    // Hard fallback: toggle sidebar visibility
+    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+    if (sidebar) {
+        const isCollapsed = sidebar.offsetWidth < 10;
+        sidebar.style.marginLeft = isCollapsed ? '0' : '-400px';
+    }
+}
+</script>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
