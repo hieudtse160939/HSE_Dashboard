@@ -8,7 +8,7 @@ import os
 st.set_page_config(page_title="HSE Master Dashboard", layout="wide")
 
 def process_data(df, df_gv=None):
-    # Chuẩn hóa tên cột
+    # Chuẩn hóa tên cột file HSE
     df.columns = [str(c).strip() for c in df.columns]
     req = ['Lớp', 'Môn', 'Tong_Luot_Giao_Bai', 'Tong_Hoan_Thanh']
     
@@ -19,15 +19,39 @@ def process_data(df, df_gv=None):
     df['Tong_Luot_Giao_Bai'] = pd.to_numeric(df['Tong_Luot_Giao_Bai'], errors='coerce').fillna(0)
     df['Tong_Hoan_Thanh'] = pd.to_numeric(df['Tong_Hoan_Thanh'], errors='coerce').fillna(0)
     
-    # Ghép nối với dữ liệu Giáo viên nếu có
+    # CHUẨN HÓA DỮ LIỆU ĐỂ MERGE KHÔNG BỊ LỖI (Xóa khoảng trắng thừa, in hoa Lớp)
+    df['Lớp'] = df['Lớp'].astype(str).str.strip().str.upper()
+    df['Môn'] = df['Môn'].astype(str).str.strip()
+    
+    teacher_main_subject = {} # Từ điển lưu môn chính của từng Giáo viên
+    
+    # Xử lý file GVBM và Merge
     if df_gv is not None:
         df_gv.columns = [str(c).strip() for c in df_gv.columns]
-        # Xử lý linh hoạt nếu file dùng tên cột khác
         gv_col = next((col for col in df_gv.columns if 'giáo viên' in col.lower() or 'gv' in col.lower()), 'Giáo Viên')
         
         if 'Lớp' in df_gv.columns and 'Môn' in df_gv.columns and gv_col in df_gv.columns:
             df_gv = df_gv.rename(columns={gv_col: 'Giáo Viên'})
-            df = pd.merge(df, df_gv[['Lớp', 'Môn', 'Giáo Viên']], on=['Lớp', 'Môn'], how='left')
+            
+            # Chuẩn hóa dữ liệu GVBM
+            df_gv['Lớp'] = df_gv['Lớp'].astype(str).str.strip().str.upper()
+            df_gv['Môn'] = df_gv['Môn'].astype(str).str.strip()
+            df_gv['Giáo Viên'] = df_gv['Giáo Viên'].astype(str).str.strip()
+            
+            # --- TÌM MÔN CHÍNH CỦA TỪNG GIÁO VIÊN TỪ TOÀN BỘ FILE GVBM ---
+            for gv, group in df_gv.groupby('Giáo Viên'):
+                if pd.isna(gv) or gv == "nan" or gv == "": continue
+                subjects = group['Môn'].dropna().unique()
+                
+                # Môn chính là môn KHÔNG chứa các từ khóa trải nghiệm
+                main_subs = [s for s in subjects if "trải nghiệm" not in str(s).lower() and "hđtn" not in str(s).lower()]
+                if main_subs:
+                    teacher_main_subject[gv] = main_subs[0] # Gán môn chuyên môn làm môn chính
+            # --------------------------------------------------------------
+            
+            # Loại bỏ các dòng trùng lặp trong GVBM trước khi merge để tránh x2 dữ liệu
+            df_gv_unique = df_gv[['Lớp', 'Môn', 'Giáo Viên']].drop_duplicates()
+            df = pd.merge(df, df_gv_unique, on=['Lớp', 'Môn'], how='left')
         else:
             st.warning("File GVBM cần có các cột: 'Lớp', 'Môn', và 'Giáo Viên'")
             
@@ -37,38 +61,29 @@ def process_data(df, df_gv=None):
     else:
         df['Giáo Viên'] = df['Giáo Viên'].fillna("Chưa cập nhật")
         
-    # --- LOGIC MỚI: GỘP MÔN TRẢI NGHIỆM HƯỚNG NGHIỆP VÀO MÔN CHÍNH ---
-    main_subject_map = {}
-    # Tìm môn chính của mỗi (Lớp, Giáo Viên)
-    for (lop, gv), group in df.groupby(['Lớp', 'Giáo Viên']):
-        if gv == "Chưa cập nhật": 
-            continue
-        subjects = group['Môn'].dropna().unique()
-        if len(subjects) > 1:
-            # Tìm môn không chứa chữ "trải nghiệm"
-            main_subs = [s for s in subjects if "trải nghiệm" not in str(s).lower()]
-            if main_subs:
-                # Gán môn Trải nghiệm hướng nghiệp vào môn chính (lấy môn chính đầu tiên tìm được)
-                main_subject_map[(lop, gv)] = main_subs[0]
-                
-    # Hàm đổi tên môn
+    # --- LOGIC ĐỔI TÊN MÔN TRẢI NGHIỆM THÀNH MÔN CHÍNH ---
     def rename_subject(row):
-        mon_lower = str(row['Môn']).lower()
-        if "trải nghiệm" in mon_lower:
-            return main_subject_map.get((row['Lớp'], row['Giáo Viên']), row['Môn'])
-        return row['Môn']
+        mon = str(row['Môn'])
+        mon_lower = mon.lower()
+        gv = row['Giáo Viên']
+        
+        # Nếu môn hiện tại là Trải nghiệm hướng nghiệp
+        if "trải nghiệm" in mon_lower or "hđtn" in mon_lower:
+            # Lấy tên môn chính của GV đó, nếu không tìm thấy thì đành giữ nguyên
+            return teacher_main_subject.get(gv, mon)
+        return mon
         
     df['Môn'] = df.apply(rename_subject, axis=1)
 
-    # Gộp lại theo Lớp, Môn, Giáo Viên và tính tổng để hợp nhất 2 dòng dữ liệu
+    # SAU KHI ĐỔI TÊN: Tiến hành gộp dòng (Trải nghiệm + Môn chính) thành 1 dòng duy nhất
     df = df.groupby(['Lớp', 'Môn', 'Giáo Viên'], as_index=False).agg({
         'Tong_Luot_Giao_Bai': 'sum',
         'Tong_Hoan_Thanh': 'sum'
     })
-    # Tính lại tỷ lệ cuối cùng
+    
+    # Tính lại tỷ lệ phần trăm chung sau khi gộp
     df['Ty_le'] = (df['Tong_Hoan_Thanh'] / df['Tong_Luot_Giao_Bai'] * 100).round(1).fillna(0)
-    # -----------------------------------------------------------------
-
+    
     return df
 
 def to_excel_with_style(df):
