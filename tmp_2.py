@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
-import os
 
 # --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="HSE Master Dashboard", layout="wide")
 
 def process_data(df, df_gv=None):
-    # Chuẩn hóa tên cột
+    # Chuẩn hóa tên cột file HSE
     df.columns = [str(c).strip() for c in df.columns]
     req = ['Lớp', 'Môn', 'Tong_Luot_Giao_Bai', 'Tong_Hoan_Thanh']
     
@@ -18,20 +17,42 @@ def process_data(df, df_gv=None):
         
     df['Tong_Luot_Giao_Bai'] = pd.to_numeric(df['Tong_Luot_Giao_Bai'], errors='coerce').fillna(0)
     df['Tong_Hoan_Thanh'] = pd.to_numeric(df['Tong_Hoan_Thanh'], errors='coerce').fillna(0)
-    df['Ty_le'] = (df['Tong_Hoan_Thanh'] / df['Tong_Luot_Giao_Bai'] * 100).round(1).fillna(0)
     
-    # Ghép nối với dữ liệu Giáo viên nếu có
+    # CHUẨN HÓA DỮ LIỆU ĐỂ MERGE KHÔNG BỊ LỖI
+    df['Lớp'] = df['Lớp'].astype(str).str.strip().str.upper()
+    df['Môn'] = df['Môn'].astype(str).str.strip()
+    
+    teacher_main_subject = {} # Từ điển lưu môn chính của từng Giáo viên
+    
+    # Xử lý file GVBM và Merge
     if df_gv is not None:
         df_gv.columns = [str(c).strip() for c in df_gv.columns]
-        # Xử lý linh hoạt nếu file dùng tên cột khác (ví dụ: 'Giáo viên', 'Giao vien', v.v.)
         gv_col = next((col for col in df_gv.columns if 'giáo viên' in col.lower() or 'gv' in col.lower()), 'Giáo Viên')
         
         if 'Lớp' in df_gv.columns and 'Môn' in df_gv.columns and gv_col in df_gv.columns:
-            # Đổi tên cột giáo viên về chuẩn để dễ merge
             df_gv = df_gv.rename(columns={gv_col: 'Giáo Viên'})
-            df = pd.merge(df, df_gv[['Lớp', 'Môn', 'Giáo Viên']], on=['Lớp', 'Môn'], how='left')
+            
+            # Chuẩn hóa dữ liệu GVBM
+            df_gv['Lớp'] = df_gv['Lớp'].astype(str).str.strip().str.upper()
+            df_gv['Môn'] = df_gv['Môn'].astype(str).str.strip()
+            df_gv['Giáo Viên'] = df_gv['Giáo Viên'].astype(str).str.strip()
+            
+            # --- TÌM MÔN CHÍNH CỦA TỪNG GIÁO VIÊN TỪ TOÀN BỘ FILE GVBM ---
+            for gv, group in df_gv.groupby('Giáo Viên'):
+                if pd.isna(gv) or gv == "nan" or gv == "": continue
+                subjects = group['Môn'].dropna().unique()
+                
+                # Môn chính là môn KHÔNG chứa các từ khóa trải nghiệm
+                main_subs = [s for s in subjects if "trải nghiệm" not in str(s).lower() and "hđtn" not in str(s).lower()]
+                if main_subs:
+                    teacher_main_subject[gv] = main_subs[0] # Gán môn chuyên môn làm môn chính
+            # --------------------------------------------------------------
+            
+            # Loại bỏ các dòng trùng lặp trong GVBM trước khi merge để tránh x2 dữ liệu
+            df_gv_unique = df_gv[['Lớp', 'Môn', 'Giáo Viên']].drop_duplicates()
+            df = pd.merge(df, df_gv_unique, on=['Lớp', 'Môn'], how='left')
         else:
-            st.warning("File GVBM cần có các cột: 'Lớp', 'Môn', và 'Giáo Viên'")
+            st.warning("Dữ liệu Giáo viên từ GitHub thiếu cột. Cần có: 'Lớp', 'Môn', và 'Giáo Viên'")
             
     # Xử lý trường hợp không có tên giáo viên
     if 'Giáo Viên' not in df.columns:
@@ -39,6 +60,29 @@ def process_data(df, df_gv=None):
     else:
         df['Giáo Viên'] = df['Giáo Viên'].fillna("Chưa cập nhật")
         
+    # --- LOGIC ĐỔI TÊN MÔN TRẢI NGHIỆM THÀNH MÔN CHÍNH ---
+    def rename_subject(row):
+        mon = str(row['Môn'])
+        mon_lower = mon.lower()
+        gv = row['Giáo Viên']
+        
+        # Nếu môn hiện tại là Trải nghiệm hướng nghiệp
+        if "trải nghiệm" in mon_lower or "hđtn" in mon_lower:
+            # Lấy tên môn chính của GV đó, nếu không tìm thấy thì đành giữ nguyên
+            return teacher_main_subject.get(gv, mon)
+        return mon
+        
+    df['Môn'] = df.apply(rename_subject, axis=1)
+
+    # SAU KHI ĐỔI TÊN: Tiến hành gộp dòng (Trải nghiệm + Môn chính) thành 1 dòng duy nhất
+    df = df.groupby(['Lớp', 'Môn', 'Giáo Viên'], as_index=False).agg({
+        'Tong_Luot_Giao_Bai': 'sum',
+        'Tong_Hoan_Thanh': 'sum'
+    })
+    
+    # Tính lại tỷ lệ phần trăm chung sau khi gộp
+    df['Ty_le'] = (df['Tong_Hoan_Thanh'] / df['Tong_Luot_Giao_Bai'] * 100).round(1).fillna(0)
+    
     return df
 
 def to_excel_with_style(df):
@@ -69,43 +113,31 @@ st.title("🛡️ Hệ thống Quản lý & Phân tích HSE")
 
 st.sidebar.header("📂 Tải Dữ Liệu")
 
-# 1. Đọc file HSE chính
-uploaded_file = st.sidebar.file_uploader("1. Báo cáo HSE (Excel)", type=["xlsx"])
+# 1. Đọc file HSE chính (Do user upload)
+uploaded_file = st.sidebar.file_uploader("Tải lên Báo cáo HSE (Excel)", type=["xlsx"])
 
-# 2. Đọc file Giáo viên (Ưu tiên: GitHub -> Upload -> File Local)
-st.sidebar.markdown("---")
-st.sidebar.markdown("**2. Dữ liệu Giáo viên (GVBM.xlsx)**")
-github_url = st.sidebar.text_input("🔗 Link GitHub (Raw URL) nếu có:", placeholder="https://raw.githubusercontent.com/...")
-uploaded_gv = st.sidebar.file_uploader("Hoặc tải file lên:", type=["xlsx", "csv"])
+# 2. Tự động đọc dữ liệu Giáo viên từ link GitHub của bạn (Chạy ngầm, không cần thao tác)
+GV_DATA_URL = "https://raw.githubusercontent.com/hieudtse160939/HSE_Dashboard/a521cfd39d4b59e0e7af63db9e140f61c9e84a56/BM1.xlsx"
 
-df_gv = None
-try:
-    if github_url:
-        if "csv" in github_url.lower():
-            df_gv = pd.read_csv(github_url, header=None, usecols=[0, 1, 2], names=['Lớp', 'Giáo Viên', 'Môn'])
-        else:
-            df_gv = pd.read_excel(github_url)
-        st.sidebar.success("✅ Đã tải GV từ GitHub!")
-    elif uploaded_gv:
-        if uploaded_gv.name.endswith('.csv'):
-            df_gv = pd.read_csv(uploaded_gv, header=None, usecols=[0, 1, 2], names=['Lớp', 'Giáo Viên', 'Môn'])
-        else:
-            df_gv = pd.read_excel(uploaded_gv)
-        st.sidebar.success("✅ Đã tải file GV upload!")
-    elif os.path.exists("GVBM.xlsx"):
-        # TỰ ĐỘNG ĐỌC FILE LOCAL NẾU TỒN TẠI
-        df_gv = pd.read_excel("GVBM.xlsx")
-        st.sidebar.success("✅ Đã tự động đọc file **GVBM.xlsx** có sẵn trong máy!")
-    else:
-        st.sidebar.info("Đang thiếu dữ liệu Giáo viên. Hãy tải file lên hoặc đặt file GVBM.xlsx vào cùng thư mục.")
-except Exception as e:
-    st.sidebar.error(f"Lỗi đọc file Giáo viên: {e}")
+@st.cache_data(show_spinner=False)
+def load_gv_data():
+    try:
+        return pd.read_excel(GV_DATA_URL)
+    except Exception as e:
+        return None
+
+df_gv = load_gv_data()
+if df_gv is not None:
+    st.sidebar.success("✅ Đã đồng bộ dữ liệu Giáo viên từ GitHub!")
+else:
+    st.sidebar.error("❌ Không thể lấy dữ liệu Giáo viên từ GitHub. Kiểm tra lại đường link.")
 
 # Xử lý gộp dữ liệu
 if uploaded_file:
-    df = process_data(pd.read_excel(uploaded_file), df_gv)
+    with st.spinner('Đang xử lý dữ liệu...'):
+        df = process_data(pd.read_excel(uploaded_file), df_gv)
 else:
-    st.info("👈 Vui lòng tải dữ liệu báo cáo HSE (Excel) ở thanh bên trái để bắt đầu.")
+    st.info("👈 Vui lòng tải dữ liệu Báo cáo HSE ở thanh bên trái để bắt đầu.")
     st.stop()
 
 # --- 3. BỘ LỌC & NÚT TẢI ---
