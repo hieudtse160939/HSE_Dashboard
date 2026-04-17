@@ -116,7 +116,7 @@ st.sidebar.header("📂 Tải Dữ Liệu")
 # 1. Đọc file HSE chính (Do user upload)
 uploaded_file = st.sidebar.file_uploader("Tải lên Báo cáo HSE (Excel)", type=["xlsx"])
 
-# 2. Tự động đọc dữ liệu Giáo viên từ link GitHub của bạn (Chạy ngầm, không cần thao tác)
+# 2. Tự động đọc dữ liệu Giáo viên từ link GitHub
 GV_DATA_URL = "https://raw.githubusercontent.com/hieudtse160939/HSE_Dashboard/a521cfd39d4b59e0e7af63db9e140f61c9e84a56/BM1.xlsx"
 
 @st.cache_data(show_spinner=False)
@@ -130,7 +130,7 @@ df_gv = load_gv_data()
 if df_gv is not None:
     st.sidebar.success("✅ Đã đồng bộ dữ liệu Giáo viên từ GitHub!")
 else:
-    st.sidebar.error("❌ Không thể lấy dữ liệu Giáo viên từ GitHub. Kiểm tra lại đường link.")
+    st.sidebar.error("❌ Không thể lấy dữ liệu Giáo viên từ GitHub.")
 
 # Xử lý gộp dữ liệu
 if uploaded_file:
@@ -170,7 +170,8 @@ st.sidebar.download_button(
 if selected_class == "Tất cả các lớp" and selected_teacher == "Tất cả Giáo viên":
     st.header("🌍 Phân tích Tổng thể Toàn trường")
     
-    tab_lop, tab_gv = st.tabs(["📊 Tổng hợp theo Lớp", "👩‍🏫 Tổng hợp theo Giáo Viên"])
+    # THÊM TAB MÔN HỌC Ở ĐÂY
+    tab_lop, tab_gv, tab_mon = st.tabs(["📊 Tổng hợp theo Lớp", "👩‍🏫 Tổng hợp theo Giáo Viên", "🍕 Tổng hợp theo Môn Học"])
     
     with tab_lop:
         class_rank = df.groupby('Lớp').agg({'Tong_Luot_Giao_Bai': 'sum', 'Tong_Hoan_Thanh': 'sum'}).reset_index()
@@ -200,6 +201,32 @@ if selected_class == "Tất cả các lớp" and selected_teacher == "Tất cả
         teacher_rank['Ty_le_TB'] = (teacher_rank['Tong_Hoan_Thanh'] / teacher_rank['Tong_Luot_Giao_Bai'] * 100).round(1)
         teacher_rank = teacher_rank.sort_values('Ty_le_TB', ascending=False)
         st.dataframe(teacher_rank, use_container_width=True, hide_index=True)
+
+    with tab_mon:
+        st.subheader("Thống kê theo Môn học")
+        # Gom nhóm dữ liệu theo môn
+        subject_stats = df.groupby('Môn').agg({
+            'Tong_Luot_Giao_Bai': 'sum',
+            'Tong_Hoan_Thanh': 'sum'
+        }).reset_index()
+        subject_stats['Ty_le_TB'] = (subject_stats['Tong_Hoan_Thanh'] / subject_stats['Tong_Luot_Giao_Bai'] * 100).round(1)
+        
+        col_m1, col_m2 = st.columns([1, 1])
+        with col_m1:
+            st.write("**Bảng tỷ lệ hoàn thành theo Môn**")
+            st.dataframe(subject_stats.sort_values('Ty_le_TB', ascending=False), use_container_width=True, hide_index=True)
+        
+        with col_m2:
+            st.write("**Tỷ trọng Hoàn thành giữa các Môn (Biểu đồ Bánh)**")
+            fig_pie = px.pie(
+                subject_stats, 
+                values='Tong_Hoan_Thanh', 
+                names='Môn', 
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
 
 else:
     st.header("📝 Phân tích Chi tiết")
