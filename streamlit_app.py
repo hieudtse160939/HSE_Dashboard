@@ -1,11 +1,27 @@
+import importlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
 
+import hse_charts
 import hse_data as hd
-from hse_data import RATE
+
+
+def reload_changed_modules(*modules):
+    """Streamlit Cloud cập nhật code từ GitHub mà không khởi động lại, nên module đã import
+    (hse_data, hse_charts) vẫn là bản cũ trong bộ nhớ. Nạp lại module nào có file đã thay đổi."""
+    for m in modules:
+        mtime = os.path.getmtime(m.__file__)
+        if getattr(m, "_loaded_mtime", None) != mtime:
+            importlib.reload(m)
+            m._loaded_mtime = mtime
+
+
+reload_changed_modules(hd, hse_charts)  # hse_data trước: hse_charts import từ hse_data
+RATE = hd.RATE
 
 st.set_page_config(page_title="HSE Dashboard", page_icon=":material/monitoring:", layout="wide")
 
