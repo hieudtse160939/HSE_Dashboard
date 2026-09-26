@@ -48,6 +48,9 @@ if lessons is None:
              + ", ".join(sorted(hd.LESSON_COLS)), icon=":material/error:")
     st.stop()
 
+# Phân biệt giáo viên trùng tên (HSE chỉ ghi tên) trước khi gộp HĐTN / Môn khác
+label = hd.teacher_labeler(lessons, assign)
+lessons, students = hd.apply_labels(lessons, label), hd.apply_labels(students, label)
 mains = hd.main_subjects(lessons, assign)
 lessons = hd.merge_generic(lessons, mains)
 lessons["Khối"] = lessons["Lớp"].map(hd.grade_of)

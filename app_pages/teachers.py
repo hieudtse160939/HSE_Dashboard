@@ -51,17 +51,19 @@ with right.container(border=True, height="stretch"):
                  hide_index=True, height=360, column_config={RATE: hc.progress_col()})
 
 if c.assign is not None:
-    # Bài trên HSE gắn môn không nằm trong phân công của GV (thường do chọn nhầm môn khi giao bài)
-    assigned = c.assign.groupby("Giáo viên")["Môn"].agg(set)
-    known = L[L["Giáo viên"].isin(assigned.index) & ~L["Môn"].isin(hd.GENERIC_SUBJECTS)]
-    off = known[[m not in assigned[g] for g, m in zip(known["Giáo viên"], known["Môn"])]]
-    if not off.empty:
-        st.subheader("Môn trên HSE khác môn phân công", icon=":material/rule:")
-        st.caption("Bài dạy được gắn môn không có trong danh sách môn của giáo viên — nên kiểm tra lại "
-                   "trên HSE vì số liệu đang tính vào môn này.")
-        off = off.assign(**{"Môn phân công": off["Giáo viên"].map(lambda g: ", ".join(sorted(assigned[g])))})
-        st.dataframe(off[["Giáo viên", "Môn", "Môn phân công", "Lớp", "Bài dạy", RATE]].sort_values(["Giáo viên", "Lớp"]),
-                     hide_index=True, column_config={"Môn": "Môn trên HSE", RATE: hc.progress_col()})
+    # Giáo viên trên HSE không tìm thấy trong danh sách năm học (khác tên, trùng tên chưa có trong
+    # danh sách, hoặc bài gắn nhầm môn)
+    listed = set(c.assign["Giáo viên"])
+    unknown = c.by_teacher[~c.by_teacher["Giáo viên"].isin(listed)]
+    if not unknown.empty:
+        st.subheader("Giáo viên trên HSE chưa có trong danh sách", icon=":material/rule:")
+        same = c.assign.groupby(c.assign["Tên"].str.casefold())["Giáo viên"].agg(lambda s: ", ".join(dict.fromkeys(s)))
+        base = unknown["Giáo viên"].str.replace(r" \([^)]*\)$", "", regex=True).str.casefold()
+        unknown = unknown.assign(**{"Người cùng tên trong danh sách": base.map(same).fillna("")})
+        st.caption("Có thể là giáo viên trùng tên chưa có trong danh sách, tên viết khác, hoặc bài gắn nhầm môn "
+                   "trên HSE. Giáo viên trùng tên được tách riêng theo môn.")
+        st.dataframe(unknown[["Giáo viên", "Môn dạy", "Số bài", RATE, "Người cùng tên trong danh sách"]],
+                     hide_index=True, column_config={RATE: hc.progress_col()})
 
 if c.assign is not None and not c.sel_teachers:
     st.subheader("Có phân công nhưng chưa có bài trong báo cáo", icon=":material/person_alert:")

@@ -149,19 +149,43 @@ def _is_teacher_col(c: str) -> bool:
     return "giáo viên" in c or c in ("gv", "gvbm") or ("họ" in c and "tên" in c)
 
 
+def _with_display_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Cột 'Giáo viên' để hiển thị: tên, kèm môn chính nếu có nhiều người trùng tên.
+    VD: 'Nguyễn Thị Hằng (Toán)' và 'Nguyễn Thị Hằng (Tiếng Anh)'."""
+    df = df.copy()
+    people = df.groupby("Mã GV").agg(ten=("Tên", "first"), mon=("Môn", lambda s: next(
+        (m for m in s if m not in GENERIC_SUBJECTS), s.iloc[0])))
+    dup = people["ten"].str.casefold().duplicated(keep=False)
+    label = people["ten"].where(~dup, people["ten"] + " (" + people["mon"] + ")")
+    df["Giáo viên"] = df["Mã GV"].map(label)
+    return df
+
+
 def _parse_roster(raw: pd.DataFrame) -> pd.DataFrame:
     """Danh sách GV năm học (không có dòng tiêu đề): STT | Họ tên | Chủ nhiệm/vai trò | Môn.
-    Ô gộp (STT, tên, chủ nhiệm gộp qua nhiều dòng) = giáo viên dạy nhiều môn."""
-    rows, gv, role = [], None, ""
+    - Ô gộp (STT, tên, chủ nhiệm gộp qua nhiều dòng) = giáo viên dạy nhiều môn.
+    - Mỗi dòng có STT là một người riêng, kể cả khi trùng tên (2 cô cùng tên = 2 người).
+    - Dòng bổ sung không có STT được gắn vào người cùng tên đã có (ưu tiên cùng lớp chủ nhiệm)."""
+    people, rows, cur = {}, [], None
     for r in raw.itertuples(index=False):
-        name, role_v, mon = r[1], r[2], r[3]
+        stt, name, role_v, mon = r[0], r[1], r[2], r[3]
         if pd.notna(name) and clean(name):
-            gv, role = clean_name(name), clean(role_v) if pd.notna(role_v) else ""
-        if gv and pd.notna(mon) and clean(mon):
-            rows.append((gv, norm_subject(mon), role))
-    df = pd.DataFrame(rows, columns=["Giáo viên", "Môn", "Chủ nhiệm / vai trò"])
-    df = df.drop_duplicates(["Giáo viên", "Môn"]).reset_index(drop=True)
+            nm, role = clean_name(name), clean(role_v) if pd.notna(role_v) else ""
+            cur = None
+            if not (pd.notna(stt) and clean(stt)):
+                same = [i for i, (n, _) in people.items() if n.casefold() == nm.casefold()]
+                hr = homeroom_class(role)
+                pick = [i for i in same if hr and homeroom_class(people[i][1]) == hr] or same
+                cur = pick[0] if pick else None
+            if cur is None:
+                cur = len(people)
+                people[cur] = (nm, role)
+        if cur is not None and pd.notna(mon) and clean(mon):
+            rows.append((cur, people[cur][0], norm_subject(mon), people[cur][1]))
+    df = pd.DataFrame(rows, columns=["Mã GV", "Tên", "Môn", "Chủ nhiệm / vai trò"])
+    df = df.drop_duplicates(["Mã GV", "Môn"]).reset_index(drop=True)
     df["Lớp"] = df["Chủ nhiệm / vai trò"].map(homeroom_class)
+    df = _with_display_names(df)
     df.attrs["kind"] = "roster"
     return df
 
@@ -189,11 +213,14 @@ def load_assignment(data: bytes):
     df.columns = ["Lớp", "Giáo viên", "Môn"]
     df[["Lớp", "Giáo viên"]] = df[["Lớp", "Giáo viên"]].ffill()  # ô gộp -> điền xuống
     df = df.dropna()
-    return pd.DataFrame({
+    out = pd.DataFrame({
         "Lớp": df["Lớp"].map(clean_class),
-        "Giáo viên": df["Giáo viên"].map(clean_name),
+        "Tên": df["Giáo viên"].map(clean_name),
         "Môn": df["Môn"].map(norm_subject),
-    }).query("`Giáo viên` != '' and Môn != ''").drop_duplicates()
+    }).query("Tên != '' and Môn != ''").drop_duplicates()
+    out["Mã GV"] = out["Tên"]  # bảng phân công: mỗi tên là một người
+    out["Giáo viên"] = out["Tên"]
+    return out
 
 
 def align_names(assign: pd.DataFrame, hse_names) -> pd.DataFrame:
@@ -217,9 +244,44 @@ def align_names(assign: pd.DataFrame, hse_names) -> pd.DataFrame:
         return cands[0] if len(cands) == 1 else name
 
     out = assign.copy()
-    out["Giáo viên"] = out["Giáo viên"].map(match)
+    out["Tên"] = out["Tên"].map(match)
+    out = _with_display_names(out) if assign.attrs.get("kind") == "roster" else out.assign(**{"Giáo viên": out["Tên"]})
     out.attrs = dict(assign.attrs)
     return out
+
+
+def teacher_labeler(lessons: pd.DataFrame, assign: pd.DataFrame | None):
+    """HSE chỉ ghi tên GV -> xác định đúng người theo (tên, môn) để không gộp 2 người trùng tên.
+    - Có danh sách GV: chọn người cùng tên dạy môn đó; không ai dạy môn đó thì coi là người khác,
+      đặt tên 'Tên (Môn)'.
+    - Không có danh sách: tên nào trên HSE có từ 2 môn chuyên môn trở lên thì tách theo môn."""
+    subjects = lessons.groupby("Giáo viên")["Môn"].agg(lambda s: set(s) - GENERIC_SUBJECTS)
+    split_all = {n for n, s in subjects.items() if len(s) > 1}
+    persons = {}
+    if assign is not None:
+        for _, g in assign.groupby("Mã GV", sort=False):
+            persons.setdefault(g["Tên"].iloc[0].casefold(), []).append((g["Giáo viên"].iloc[0], set(g["Môn"])))
+
+    def label(name: str, subject: str) -> str:
+        cands = persons.get(name.casefold())
+        if not cands:
+            return f"{name} ({subject})" if name in split_all and subject not in GENERIC_SUBJECTS else name
+        hit = [d for d, s in cands if subject in s]
+        if hit:
+            return hit[0]
+        if subject in GENERIC_SUBJECTS:  # HĐTN / Môn khác: gán cho người đầu tiên cùng tên
+            return cands[0][0]
+        return f"{name} ({subject})"
+
+    return label
+
+
+def apply_labels(df: pd.DataFrame | None, label) -> pd.DataFrame | None:
+    if df is None:
+        return None
+    df = df.copy()
+    df["Giáo viên"] = [label(n, m) for n, m in zip(df["Giáo viên"], df["Môn"])]
+    return df
 
 
 def main_subjects(lessons: pd.DataFrame, assign: pd.DataFrame | None) -> dict:
