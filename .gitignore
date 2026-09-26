@@ -6,3 +6,8 @@ __pycache__/
 # Báo cáo xuất từ HSE có tên học sinh — không đẩy lên GitHub
 Bao_Cao_HSE_*.xlsx
 ~$*.xlsx
+
+# Skill cài cục bộ cho trợ lý code
+.agents/
+.claude/
+skills-lock.json

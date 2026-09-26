@@ -1,9 +1,29 @@
 [theme]
 base = "light"
+font = "'Be Vietnam Pro':https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap"
+baseFontSize = 15
+headingFontWeights = [700, 600, 600, 600, 500, 500]
 primaryColor = "#2a78d6"
-backgroundColor = "#fcfcfb"
-secondaryBackgroundColor = "#f3f2ee"
-textColor = "#0b0b0b"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f5f7"
+textColor = "#1f2328"
+borderColor = "#e3e5e8"
+showWidgetBorder = true
+baseRadius = "10px"
+linkUnderline = false
+dataframeHeaderBackgroundColor = "#f4f5f7"
+dataframeBorderColor = "#e3e5e8"
+greenColor = "#0c8a0c"
+yellowColor = "#f0a202"
+orangeColor = "#e8740c"
+redColor = "#d03b3b"
+blueColor = "#2a78d6"
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+chartSequentialColors = ["#e6f0fd", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#2a78d6", "#1c5cab", "#184f95", "#104281", "#0d366b"]
+
+[theme.sidebar]
+backgroundColor = "#f4f5f7"
+secondaryBackgroundColor = "#ffffff"
 
 [server]
 maxUploadSize = 50

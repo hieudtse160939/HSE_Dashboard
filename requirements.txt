@@ -1,5 +1,5 @@
-streamlit>=1.50
+streamlit>=1.64
 pandas>=2.0
-plotly>=5.24
+altair>=5.0
 openpyxl
 xlsxwriter
