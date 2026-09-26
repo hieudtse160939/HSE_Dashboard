@@ -18,10 +18,11 @@ with st.sidebar:
     uploaded = st.file_uploader(
         "Báo cáo HSE (.xlsx)", type=["xlsx"],
         help="File xuất từ HSE gồm các sheet: Hiệu suất bài dạy GV, Tỉ lệ học sinh, Tổng hợp lớp–môn.")
-    with st.expander("Phân công giáo viên (tuỳ chọn)", icon=":material/badge:"):
-        assign_up = st.file_uploader("File phân công năm học hiện tại", type=["xlsx"], key="assign")
-        st.caption("Không bắt buộc — giáo viên đã lấy từ cột GVBM của file HSE. Tải lên nếu muốn xem "
-                   "giáo viên có phân công nhưng chưa giao bài. Cần các cột: Lớp, Giáo viên, Môn.")
+    with st.expander("Danh sách giáo viên năm học (tuỳ chọn)", icon=":material/badge:"):
+        assign_up = st.file_uploader("Danh sách giáo viên / phân công", type=["xlsx"], key="assign")
+        st.caption("Không bắt buộc — giáo viên đã lấy từ cột GVBM của file HSE. Tải lên để xem môn "
+                   "phân công, lớp chủ nhiệm và giáo viên chưa giao bài. Hỗ trợ file dạng "
+                   "STT | Họ tên | Chủ nhiệm | Môn (ô gộp = giáo viên dạy nhiều môn).")
 
 if uploaded is not None:
     report_bytes = uploaded.getvalue()
@@ -39,6 +40,8 @@ if report_bytes is None:
 with st.spinner("Đang đọc dữ liệu…"):
     lessons, students, years = hd.load_report(report_bytes)
     assign = hd.load_assignment(assign_up.getvalue()) if assign_up is not None else None
+    if assign is not None:
+        assign = hd.align_names(assign, lessons["Giáo viên"])
 
 if lessons is None:
     st.error("Không tìm thấy sheet dữ liệu bài dạy. File cần một sheet có các cột: "
@@ -102,6 +105,12 @@ if not L.empty:
     # GV dạy nhiều môn (VD: Vật lý + Công nghệ): liệt kê đủ, mỗi bài vẫn tính đúng môn của nó
     ctx.by_teacher["Môn dạy"] = ctx.by_teacher["Giáo viên"].map(
         L.groupby("Giáo viên")["Môn"].agg(lambda s: ", ".join(s.value_counts().index)))
+    if assign is not None and "Chủ nhiệm / vai trò" in assign.columns:
+        roles = assign.drop_duplicates("Giáo viên").set_index("Giáo viên")["Chủ nhiệm / vai trò"]
+        ctx.by_teacher["Chủ nhiệm / vai trò"] = ctx.by_teacher["Giáo viên"].map(roles).fillna("")
+    if assign is not None:
+        assigned = assign.groupby("Giáo viên")["Môn"].agg(lambda s: ", ".join(dict.fromkeys(s)))
+        ctx.by_teacher["Môn phân công"] = ctx.by_teacher["Giáo viên"].map(assigned).fillna("")
     ctx.by_teacher["Số lớp"] = ctx.by_teacher["Giáo viên"].map(L.groupby("Giáo viên")["Lớp"].nunique())
     ctx.by_subject = hd.summarize(L, ["Môn"])
     ctx.by_grade = hd.summarize(L, ["Khối"])
@@ -117,6 +126,7 @@ st.session_state.hse = ctx
 if not L.empty:
     with st.sidebar:
         tcols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, "Bài dưới ngưỡng"]
+        tcols += [col for col in ("Môn phân công", "Chủ nhiệm / vai trò") if col in ctx.by_teacher.columns]
         export = {
             "Lop_Mon": ctx.by_cls_subj,
             "Lop": ctx.by_class.sort_values(RATE, ascending=False),

@@ -22,10 +22,12 @@ SUBJECT_ALIASES = {
     "khtn": "KHTN", "khoa học tự nhiên": "KHTN",
     "ktpl": "KTPL", "giáo dục kinh tế và pháp luật": "KTPL",
     "gdcd": "GDCD", "qpan": "QPAN", "gdqp": "QPAN",
-    "công nghệ": "Công nghệ", "cn": "Công nghệ", "tin học": "Tin học",
+    "công nghệ": "Công nghệ", "cn": "Công nghệ", "cng": "Công nghệ", "tin học": "Tin học",
+    "hoá": "Hóa học", "mĩ thuật": "Mĩ thuật", "mỹ thuật": "Mĩ thuật", "âm nhạc": "Âm nhạc",
+    "stem": "STEM", "ielts": "IELTS", "sử-địa": "Sử – Địa", "sử địa": "Sử – Địa",
     "giáo dục địa phương": "GDĐP", "gdđp": "GDĐP",
     "môn khác": "Môn khác", "khác": "Môn khác",
-    "trải nghiệm hướng nghiệp": "HĐTN", "hoạt động trải nghiệm": "HĐTN",
+    "trải nghiệm hướng nghiệp": "HĐTN", "tnhn": "HĐTN", "hoạt động trải nghiệm": "HĐTN",
     "hoạt động trải nghiệm, hướng nghiệp": "HĐTN", "hđtn": "HĐTN",
 }
 # Các "môn" không phải chuyên môn -> gộp vào môn chính của giáo viên
@@ -57,6 +59,17 @@ def clean_name(s) -> str:
 def clean_class(s) -> str:
     """'10DA1 Nam Hoc 2026 - 2027' -> '10DA1'"""
     return YEAR_RE.sub("", clean(s)).upper().replace("LỚP", "Lớp")
+
+
+def homeroom_class(v) -> str:
+    """Lớp chủ nhiệm trong danh sách GV: '11A4' -> '11DA4', 'GVCN 11DA7' -> '11DA7', '11-THN' -> '11TTHN'.
+    Trả về '' nếu ô là vai trò (GVCH, GVTG, TLHT…) chứ không phải lớp."""
+    v = re.sub(r"^GVCN\s*", "", clean(v).upper())
+    if m := re.fullmatch(r"(\d{1,2})D?A(\d+)", v):
+        return f"{m.group(1)}DA{m.group(2)}"
+    if m := re.fullmatch(r"(\d{1,2})-?T?THN", v):
+        return f"{m.group(1)}TTHN"
+    return ""
 
 
 def school_years(values) -> list:
@@ -136,11 +149,28 @@ def _is_teacher_col(c: str) -> bool:
     return "giáo viên" in c or c in ("gv", "gvbm") or ("họ" in c and "tên" in c)
 
 
+def _parse_roster(raw: pd.DataFrame) -> pd.DataFrame:
+    """Danh sách GV năm học (không có dòng tiêu đề): STT | Họ tên | Chủ nhiệm/vai trò | Môn.
+    Ô gộp (STT, tên, chủ nhiệm gộp qua nhiều dòng) = giáo viên dạy nhiều môn."""
+    rows, gv, role = [], None, ""
+    for r in raw.itertuples(index=False):
+        name, role_v, mon = r[1], r[2], r[3]
+        if pd.notna(name) and clean(name):
+            gv, role = clean_name(name), clean(role_v) if pd.notna(role_v) else ""
+        if gv and pd.notna(mon) and clean(mon):
+            rows.append((gv, norm_subject(mon), role))
+    df = pd.DataFrame(rows, columns=["Giáo viên", "Môn", "Chủ nhiệm / vai trò"])
+    df = df.drop_duplicates(["Giáo viên", "Môn"]).reset_index(drop=True)
+    df["Lớp"] = df["Chủ nhiệm / vai trò"].map(homeroom_class)
+    df.attrs["kind"] = "roster"
+    return df
+
+
 @st.cache_data(show_spinner=False, max_entries=5)
 def load_assignment(data: bytes):
-    """File phân công do người dùng tải lên (phân công thay đổi theo năm học).
-    Hỗ trợ cả bảng phẳng lẫn bảng có ô gộp (tên GV / lớp gộp qua nhiều dòng môn),
-    tên viết HOA và dòng tiêu đề không nằm ở dòng đầu."""
+    """File giáo viên năm học do người dùng tải lên (thay đổi theo năm). Hai dạng:
+    - Danh sách GV (như Book1): STT | Họ tên | Chủ nhiệm/vai trò | Môn, không tiêu đề, ô gộp = nhiều môn.
+    - Bảng phân công có tiêu đề Lớp / Giáo viên / Môn (như BM1), có thể có ô gộp."""
     try:
         raw = pd.read_excel(BytesIO(data), header=None, dtype=str)
     except Exception:
@@ -151,7 +181,7 @@ def load_assignment(data: bytes):
         if any(c.startswith("lớp") for c in low) and any("môn" in c for c in low) and any(map(_is_teacher_col, cells)):
             break
     else:
-        return None
+        return _parse_roster(raw) if raw.shape[1] >= 4 else None
     lop = next(j for j, c in enumerate(low) if c.startswith("lớp"))
     mon = next(j for j, c in enumerate(low) if "môn" in c)
     gv = next(j for j, c in enumerate(cells) if _is_teacher_col(c))
@@ -164,6 +194,32 @@ def load_assignment(data: bytes):
         "Giáo viên": df["Giáo viên"].map(clean_name),
         "Môn": df["Môn"].map(norm_subject),
     }).query("`Giáo viên` != '' and Môn != ''").drop_duplicates()
+
+
+def align_names(assign: pd.DataFrame, hse_names) -> pd.DataFrame:
+    """Đưa tên GV trong file năm học về đúng cách viết trong HSE.
+    Khớp nếu trùng (không phân biệt hoa thường), hoặc cùng họ + tên và tên HSE nằm gọn trong tên đầy đủ
+    (VD: HSE 'Trần Thanh Phương' <-> 'Trần Thị Thanh Phương')."""
+    hse = sorted(set(hse_names))
+    exact = {n.casefold(): n for n in hse}
+
+    def match(name: str) -> str:
+        if name.casefold() in exact:
+            return exact[name.casefold()]
+        full = name.casefold().split()
+        cands = []
+        for n in hse:
+            short = n.casefold().split()
+            if len(short) < len(full) and short[0] == full[0] and short[-1] == full[-1]:
+                it = iter(full)
+                if all(t in it for t in short):
+                    cands.append(n)
+        return cands[0] if len(cands) == 1 else name
+
+    out = assign.copy()
+    out["Giáo viên"] = out["Giáo viên"].map(match)
+    out.attrs = dict(assign.attrs)
+    return out
 
 
 def main_subjects(lessons: pd.DataFrame, assign: pd.DataFrame | None) -> dict:

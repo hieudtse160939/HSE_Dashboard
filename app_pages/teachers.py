@@ -7,13 +7,15 @@ from hse_data import RATE
 c = st.session_state.hse
 L, low, high = c.L, c.low, c.high
 cols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, "Bài dưới ngưỡng"]
+extra = [col for col in ("Môn phân công", "Chủ nhiệm / vai trò") if col in c.by_teacher.columns]
+cols += extra
 
 with st.container(border=True):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Xếp hạng giáo viên theo tỷ lệ hoàn thành**")
         view = hc.view_toggle("gv_view")
     if view == "Biểu đồ":
-        hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài")))
+        hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài", *extra)))
     else:
         st.dataframe(c.by_teacher[cols].sort_values(RATE, ascending=False), hide_index=True, column_config={
             RATE: hc.progress_col(),
@@ -26,7 +28,8 @@ row = c.by_teacher[c.by_teacher["Giáo viên"] == gv].iloc[0]
 with st.container(horizontal=True):
     st.metric("Tỷ lệ hoàn thành", f"{row[RATE]:.1f}%", f"{row[RATE] - c.overall:+.1f} điểm",
               delta_description="so với chung", border=True)
-    st.metric("Môn dạy", row["Môn dạy"], border=True)
+    st.metric("Môn dạy", row["Môn dạy"], border=True,
+              help=f"Môn phân công: {row['Môn phân công']}" if row.get("Môn phân công") else None)
     st.metric("Số lớp / số bài", f"{int(row['Số lớp'])} / {int(row['Số bài'])}", border=True)
     st.metric(f"Bài dưới {low}%", int(row["Bài dưới ngưỡng"]), border=True)
 
@@ -47,12 +50,26 @@ with right.container(border=True, height="stretch"):
     st.dataframe(mine[["Lớp", "Môn", "Bài dạy", "Lượt giao", "Hoàn thành", RATE]].sort_values(RATE),
                  hide_index=True, height=360, column_config={RATE: hc.progress_col()})
 
+if c.assign is not None:
+    # Bài trên HSE gắn môn không nằm trong phân công của GV (thường do chọn nhầm môn khi giao bài)
+    assigned = c.assign.groupby("Giáo viên")["Môn"].agg(set)
+    known = L[L["Giáo viên"].isin(assigned.index) & ~L["Môn"].isin(hd.GENERIC_SUBJECTS)]
+    off = known[[m not in assigned[g] for g, m in zip(known["Giáo viên"], known["Môn"])]]
+    if not off.empty:
+        st.subheader("Môn trên HSE khác môn phân công", icon=":material/rule:")
+        st.caption("Bài dạy được gắn môn không có trong danh sách môn của giáo viên — nên kiểm tra lại "
+                   "trên HSE vì số liệu đang tính vào môn này.")
+        off = off.assign(**{"Môn phân công": off["Giáo viên"].map(lambda g: ", ".join(sorted(assigned[g])))})
+        st.dataframe(off[["Giáo viên", "Môn", "Môn phân công", "Lớp", "Bài dạy", RATE]].sort_values(["Giáo viên", "Lớp"]),
+                     hide_index=True, column_config={"Môn": "Môn trên HSE", RATE: hc.progress_col()})
+
 if c.assign is not None and not c.sel_teachers:
     st.subheader("Có phân công nhưng chưa có bài trong báo cáo", icon=":material/person_alert:")
+    roster = c.assign.attrs.get("kind") == "roster"  # danh sách GV: không có phân công theo lớp
     a = c.assign[c.assign["Môn"].isin(set(c.lessons["Môn"]))]
-    if c.sel_grades:
+    if c.sel_grades and not roster:
         a = a[a["Lớp"].map(hd.grade_of).isin(c.sel_grades)]
-    if c.sel_classes:
+    if c.sel_classes and not roster:
         a = a[a["Lớp"].isin(c.sel_classes)]
     if c.sel_subjects:
         a = a[a["Môn"].isin(c.sel_subjects)]
@@ -61,9 +78,17 @@ if c.assign is not None and not c.sel_teachers:
         st.success("Tất cả giáo viên được phân công (trong phạm vi lọc) đều đã có bài giao.",
                    icon=":material/check_circle:")
     else:
-        miss = a.groupby("Giáo viên", as_index=False).agg(
-            **{"Môn": ("Môn", lambda s: ", ".join(sorted(s.unique()))),
-               "Số lớp phân công": ("Lớp", "nunique"),
-               "Các lớp": ("Lớp", lambda s: ", ".join(sorted(s.unique(), key=hd.class_key)))})
-        st.caption(f"{len(miss)} giáo viên · chỉ tính các môn có trong báo cáo HSE · đối chiếu theo tên giáo viên.")
-        st.dataframe(miss.sort_values("Số lớp phân công", ascending=False), hide_index=True)
+        if roster:
+            mine = c.assign[c.assign["Giáo viên"].isin(set(a["Giáo viên"]))]
+            miss = mine.groupby("Giáo viên", as_index=False).agg(
+                **{"Môn phân công": ("Môn", lambda s: ", ".join(dict.fromkeys(s))),
+                   "Chủ nhiệm / vai trò": ("Chủ nhiệm / vai trò", "first")})
+            note = "khối/lớp không áp dụng vì danh sách giáo viên không ghi lớp giảng dạy"
+        else:
+            miss = a.groupby("Giáo viên", as_index=False).agg(
+                **{"Môn": ("Môn", lambda s: ", ".join(sorted(s.unique()))),
+                   "Số lớp phân công": ("Lớp", "nunique"),
+                   "Các lớp": ("Lớp", lambda s: ", ".join(sorted(s.unique(), key=hd.class_key)))})
+            note = "đối chiếu theo tên giáo viên"
+        st.caption(f"{len(miss)} giáo viên · chỉ tính các môn có trong báo cáo HSE · {note}.")
+        st.dataframe(miss.sort_values("Giáo viên"), hide_index=True)
