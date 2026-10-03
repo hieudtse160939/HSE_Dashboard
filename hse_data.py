@@ -8,6 +8,7 @@ import streamlit as st
 
 RATE = "Tỷ lệ (%)"
 SCORE = "Điểm xếp hạng"
+W_RATE = 70  # % trọng số tỷ lệ hoàn thành trong điểm xếp hạng GV mặc định
 LESSON_COLS = {"GVBM", "Môn", "Lớp", "Tên bài dạy", "Si_So_HS", "SL_Hoan_Thanh"}
 STUDENT_COLS = {"Lớp", "Học sinh", "Môn", "GVBM", "Tong_Bai_Giao", "Da_Nop"}
 
@@ -96,7 +97,7 @@ def rate(done, total):
     return (done / total.where(total > 0) * 100).round(1).fillna(0)
 
 
-def add_score(df: pd.DataFrame, w_rate: float = 0.5) -> pd.DataFrame:
+def add_score(df: pd.DataFrame, w_rate: float = W_RATE / 100) -> pd.DataFrame:
     """Điểm xếp hạng = w·tỷ lệ hoàn thành + (1-w)·khối lượng giao bài.
 
     Khối lượng = lượt giao so với người giao nhiều nhất (thang 0–100), để người giao nhiều

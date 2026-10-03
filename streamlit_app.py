@@ -90,6 +90,8 @@ with st.sidebar:
                                   placeholder="Tất cả giáo viên", key="f_teachers")
     low, high = st.slider("Ngưỡng cảnh báo / đạt (%)", 0, 100, (50, 80), step=5, key="f_threshold",
                           help="Dưới mức thứ nhất là cảnh báo; từ mức thứ hai trở lên là đạt.")
+    w_rate = st.slider("Tỷ trọng tỷ lệ hoàn thành khi xếp hạng GV (%)", 50, 100, hd.W_RATE, step=5,
+                       key="f_w_rate", help="Phần còn lại tính theo khối lượng giao bài. 100 = chỉ xếp theo tỷ lệ.")
 
 
 def apply_filters(df):
@@ -113,7 +115,7 @@ L[RATE] = hd.rate(L["Hoàn thành"], L["Lượt giao"])
 L["_low"] = (L[RATE] < low).astype(int)
 
 ctx = SimpleNamespace(
-    lessons=lessons, assign=assign, mains=mains, L=L, low=low, high=high,
+    lessons=lessons, assign=assign, mains=mains, L=L, low=low, high=high, w_rate=w_rate,
     filtered=any([sel_grades, sel_classes, sel_subjects, sel_teachers]),
     sel_grades=sel_grades, sel_classes=sel_classes, sel_subjects=sel_subjects, sel_teachers=sel_teachers,
 )
@@ -131,7 +133,7 @@ if not L.empty:
         assigned = assign.groupby("Giáo viên")["Môn"].agg(lambda s: ", ".join(dict.fromkeys(s)))
         ctx.by_teacher["Môn phân công"] = ctx.by_teacher["Giáo viên"].map(assigned).fillna("")
     ctx.by_teacher["Số lớp"] = ctx.by_teacher["Giáo viên"].map(L.groupby("Giáo viên")["Lớp"].nunique())
-    hd.add_score(ctx.by_teacher)
+    hd.add_score(ctx.by_teacher, w_rate / 100)
     ctx.by_subject = hd.summarize(L, ["Môn"])
     ctx.by_grade = hd.summarize(L, ["Khối"])
     ctx.by_cls_subj = hd.summarize(L, ["Khối", "Lớp", "Môn"])
