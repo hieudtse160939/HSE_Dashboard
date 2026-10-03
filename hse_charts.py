@@ -27,8 +27,8 @@ def show(chart, key=None):
     st.altair_chart(chart, key=key)
 
 
-def ranked_bar(df: pd.DataFrame, cat: str, low: int, high: int, extra=(), legend=True):
-    """Thanh ngang xếp hạng theo tỷ lệ, cao nhất ở trên; màu theo mức kèm chú giải chữ."""
+def ranked_bar(df: pd.DataFrame, cat: str, low: int, high: int, extra=(), legend=True, sort_by=None):
+    """Thanh ngang xếp hạng theo tỷ lệ (hoặc theo cột sort_by), cao nhất ở trên; màu theo mức kèm chú giải chữ."""
     d = pd.DataFrame({"cat": df[cat].values, "rate": df[RATE].values,
                       "giao": df["Lượt giao"].values, "ht": df["Hoàn thành"].values})
     d["tier"] = d["rate"].map(lambda r: tier_of(r, low, high))
@@ -37,7 +37,10 @@ def ranked_bar(df: pd.DataFrame, cat: str, low: int, high: int, extra=(), legend
     for i, col in enumerate(c for c in extra if c in df.columns):
         d[f"x{i}"] = df[col].values
         tips.append(alt.Tooltip(f"x{i}:N", title=col))
-    order = d.sort_values(["rate", "cat"], ascending=[False, True])["cat"].tolist()
+    d["key"] = df[sort_by].values if sort_by else d["rate"]
+    if sort_by:
+        tips.insert(1, alt.Tooltip("key:Q", title=sort_by, format=".1f"))
+    order = d.sort_values(["key", "cat"], ascending=[False, True])["cat"].tolist()
     base = alt.Chart(d).encode(
         y=alt.Y("cat:N", sort=order, title=None, axis=alt.Axis(labelLimit=240)),
         x=RATE_AXIS, tooltip=tips)

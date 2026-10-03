@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 RATE = "Tỷ lệ (%)"
+SCORE = "Điểm xếp hạng"
 LESSON_COLS = {"GVBM", "Môn", "Lớp", "Tên bài dạy", "Si_So_HS", "SL_Hoan_Thanh"}
 STUDENT_COLS = {"Lớp", "Học sinh", "Môn", "GVBM", "Tong_Bai_Giao", "Da_Nop"}
 
@@ -93,6 +94,18 @@ def class_key(c: str):
 
 def rate(done, total):
     return (done / total.where(total > 0) * 100).round(1).fillna(0)
+
+
+def add_score(df: pd.DataFrame, w_rate: float = 0.5) -> pd.DataFrame:
+    """Điểm xếp hạng = w·tỷ lệ hoàn thành + (1-w)·khối lượng giao bài.
+
+    Khối lượng = lượt giao so với người giao nhiều nhất (thang 0–100), để người giao nhiều
+    không bị xếp dưới người chỉ giao vài bài nhưng tỷ lệ cao.
+    """
+    top = df["Lượt giao"].max()
+    load = df["Lượt giao"] / top * 100 if top else 0
+    df[SCORE] = (w_rate * df[RATE] + (1 - w_rate) * load).round(1)
+    return df
 
 
 # -----------------------------------------------------------------------------
