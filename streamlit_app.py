@@ -90,8 +90,8 @@ with st.sidebar:
                                   placeholder="Tất cả giáo viên", key="f_teachers")
     low, high = st.slider("Ngưỡng cảnh báo / đạt (%)", 0, 100, (50, 80), step=5, key="f_threshold",
                           help="Dưới mức thứ nhất là cảnh báo; từ mức thứ hai trở lên là đạt.")
-    w_rate = st.slider("Tỷ trọng tỷ lệ hoàn thành khi xếp hạng GV (%)", 50, 100, hd.W_RATE, step=5,
-                       key="f_w_rate", help="Phần còn lại tính theo khối lượng giao bài. 100 = chỉ xếp theo tỷ lệ.")
+    w_rate = st.slider("Tỷ trọng tỷ lệ hoàn thành khi xếp hạng GV (%)", 0, 100, hd.W_RATE, step=5,
+                       key="f_w_rate", help="Phần còn lại tính theo khối lượng giao bài. 100 = chỉ xếp theo tỷ lệ; 0 = chỉ xếp theo khối lượng.")
 
 
 def apply_filters(df):
