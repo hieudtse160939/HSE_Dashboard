@@ -2,11 +2,11 @@ import streamlit as st
 
 import hse_charts as hc
 import hse_data as hd
-from hse_data import RATE, SCORE
+from hse_data import RATE
 
 c = st.session_state.hse
 L, low, high = c.L, c.low, c.high
-cols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, SCORE, "Bài dưới ngưỡng"]
+cols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, "Bài dưới ngưỡng"]
 extra = [col for col in ("Môn phân công", "Chủ nhiệm / vai trò") if col in c.by_teacher.columns]
 cols += extra
 
@@ -14,15 +14,12 @@ with st.container(border=True):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Xếp hạng giáo viên**")
         view = hc.view_toggle("gv_view")
-    st.caption(f"Xếp theo điểm tổng hợp: {c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài "
-               "(lượt giao so với giáo viên giao nhiều nhất). Chỉnh tỷ trọng ở thanh bên.")
+    st.caption("Xếp theo tỷ lệ hoàn thành của học sinh (hoàn thành / lượt giao), cao nhất ở trên.")
     if view == "Biểu đồ":
-        hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài", *extra), sort_by=SCORE))
+        hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài", *extra)))
     else:
-        st.dataframe(c.by_teacher[cols].sort_values(SCORE, ascending=False), hide_index=True, column_config={
+        st.dataframe(c.by_teacher[cols].sort_values(RATE, ascending=False), hide_index=True, column_config={
             RATE: hc.progress_col(),
-            SCORE: st.column_config.NumberColumn(
-                SCORE, format="%.1f", help=f"{c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài (thang 0–100)"),
             "Bài dưới ngưỡng": st.column_config.NumberColumn(
                 f"Bài dưới {low}%", help="Số bài dạy có tỷ lệ hoàn thành dưới ngưỡng cảnh báo")})
 
