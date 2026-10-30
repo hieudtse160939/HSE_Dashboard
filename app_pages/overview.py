@@ -36,7 +36,7 @@ if c.stu is not None:
 
 
 def ranking(df: pd.DataFrame, cat: str, n=3):
-    key = RATE
+    key = hd.SCORE if hd.SCORE in df.columns else RATE
     d = df[df["Lượt giao"] > 0].sort_values(key, ascending=False)
     unit = "%" if key == RATE else " điểm"
     top = "\n".join(f"- {r[cat]} :green-badge[{r[key]:.1f}{unit}]" for _, r in d.head(n).iterrows())
