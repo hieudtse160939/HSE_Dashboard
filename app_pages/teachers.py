@@ -10,6 +10,13 @@ cols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", 
 extra = [col for col in ("Môn phân công", "Chủ nhiệm / vai trò") if col in c.by_teacher.columns]
 cols += extra
 
+
+def ranked(df, key):
+    """Sắp xếp giảm dần theo key và thêm cột Hạng (1 = cao nhất)."""
+    df = df.sort_values(key, ascending=False).reset_index(drop=True)
+    df.insert(0, "Hạng", range(1, len(df) + 1))
+    return df
+
 with st.container(border=True):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Xếp hạng giáo viên**")
@@ -19,7 +26,7 @@ with st.container(border=True):
     if view == "Biểu đồ":
         hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài", *extra), sort_by=SCORE))
     else:
-        st.dataframe(c.by_teacher[cols].sort_values(SCORE, ascending=False), hide_index=True, column_config={
+        st.dataframe(ranked(c.by_teacher[cols], SCORE), hide_index=True, column_config={
             RATE: hc.progress_col(),
             SCORE: st.column_config.NumberColumn(
                 SCORE, format="%.1f", help=f"{c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài (thang 0–100)"),
@@ -31,14 +38,14 @@ t_pm, t_rate = st.columns(2)
 with t_pm.container(border=True):
     st.markdown("**Xếp hạng theo số bài / lớp**")
     st.caption("= số bài ÷ số lớp. Cho thấy mức độ giao bài đều đặn, không phụ thuộc giáo viên dạy ít hay nhiều lớp.")
-    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_CLASS]]
-                 .sort_values(PER_CLASS, ascending=False), hide_index=True, height=420, column_config={
+    st.dataframe(ranked(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_CLASS]], PER_CLASS),
+                 hide_index=True, height=420, column_config={
         PER_CLASS: st.column_config.NumberColumn(PER_CLASS, format="%.2f")})
 with t_rate.container(border=True):
     st.markdown("**Xếp hạng theo % hoàn thành**")
     st.caption("= hoàn thành ÷ lượt giao của học sinh.")
-    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Lượt giao", "Hoàn thành", RATE]]
-                 .sort_values(RATE, ascending=False), hide_index=True, height=420, column_config={
+    st.dataframe(ranked(c.by_teacher[["Giáo viên", "Môn dạy", "Lượt giao", "Hoàn thành", RATE]], RATE),
+                 hide_index=True, height=420, column_config={
         RATE: hc.progress_col()})
 
 st.subheader("Chi tiết một giáo viên", icon=":material/search:")

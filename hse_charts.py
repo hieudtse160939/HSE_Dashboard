@@ -40,12 +40,17 @@ def ranked_bar(df: pd.DataFrame, cat: str, low: int, high: int, extra=(), legend
     d["key"] = df[sort_by].values if sort_by else d["rate"]
     if sort_by:
         tips.insert(1, alt.Tooltip("key:Q", title=sort_by, format=".1f"))
-    order = d.sort_values(["key", "cat"], ascending=[False, True])["cat"].tolist()
+    d = d.sort_values(["key", "cat"], ascending=[False, True]).reset_index(drop=True)
+    d["lbl"] = d["rate"].map(lambda r: f"{r:.1f}%")
+    if sort_by:  # đánh số hạng và ghi điểm xếp hạng cạnh tỷ lệ để thấy rõ thứ tự
+        d["cat"] = [f"{i + 1}. {c}" for i, c in enumerate(d["cat"])]
+        d["lbl"] = [f"{r:.1f}%  ·  {k:.1f} điểm" for r, k in zip(d["rate"], d["key"])]
+    order = d["cat"].tolist()
     base = alt.Chart(d).encode(
         y=alt.Y("cat:N", sort=order, title=None, axis=alt.Axis(labelLimit=240)),
         x=RATE_AXIS, tooltip=tips)
     bars = base.mark_bar(cornerRadiusEnd=4, height={"band": 0.72}).encode(color=_tier_color(low, high, legend))
-    labels = base.mark_text(align="left", dx=4, color=INK2, fontSize=11).encode(text=alt.Text("rate:Q", format=".1f"))
+    labels = base.mark_text(align="left", dx=4, color=INK2, fontSize=11).encode(text="lbl:N")
     return (bars + labels + _threshold(low)).properties(height=max(160, 26 * len(d) + (110 if legend else 80)))
 
 
