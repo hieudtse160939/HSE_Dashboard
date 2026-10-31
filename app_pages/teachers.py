@@ -17,11 +17,14 @@ def ranked(df, key):
     df.insert(0, "Hạng", range(1, len(df) + 1))
     return df
 
-with st.container(border=True):
+PM_LABEL = "Số bài / lớp / tháng"
+tab_score, tab_pm, tab_rate = st.tabs(["Điểm tổng hợp", PM_LABEL, "% hoàn thành"])
+
+with tab_score:
     with st.container(horizontal=True, vertical_alignment="center"):
-        st.markdown("**Xếp hạng giáo viên**")
+        st.markdown("**Xếp hạng giáo viên theo điểm tổng hợp**")
         view = hc.view_toggle("gv_view")
-    st.caption(f"Xếp theo điểm tổng hợp: {c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài "
+    st.caption(f"Điểm = {c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài "
                "(lượt giao so với giáo viên giao nhiều nhất). Chỉnh tỷ trọng ở thanh bên.")
     if view == "Biểu đồ":
         hc.show(hc.ranked_bar(c.by_teacher, "Giáo viên", low, high, ("Môn dạy", "Số bài", *extra), sort_by=SCORE))
@@ -33,20 +36,19 @@ with st.container(border=True):
             "Bài dưới ngưỡng": st.column_config.NumberColumn(
                 f"Bài dưới {low}%", help="Số bài dạy có tỷ lệ hoàn thành dưới ngưỡng cảnh báo")})
 
-st.subheader("Hai bảng xếp hạng", icon=":material/leaderboard:")
-t_pm, t_rate = st.columns(2)
-with t_pm.container(border=True):
-    st.markdown("**Xếp hạng theo số bài / lớp**")
-    st.caption("= số bài ÷ số lớp. Cho thấy mức độ giao bài đều đặn, không phụ thuộc giáo viên dạy ít hay nhiều lớp.")
-    st.dataframe(ranked(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_CLASS]], PER_CLASS),
-                 hide_index=True, height=420, column_config={
-        PER_CLASS: st.column_config.NumberColumn(PER_CLASS, format="%.2f")})
-with t_rate.container(border=True):
-    st.markdown("**Xếp hạng theo % hoàn thành**")
-    st.caption("= hoàn thành ÷ lượt giao của học sinh.")
+with tab_pm:
+    st.markdown(f"**Xếp hạng giáo viên theo {PM_LABEL}**")
+    st.caption("Công thức: số bài ÷ số lớp (báo cáo theo tháng). Giáo viên dạy ít lớp hay nhiều lớp được so trên cùng một thang.")
+    pm = ranked(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_CLASS]], PER_CLASS)
+    st.dataframe(pm, hide_index=True, height=520, column_config={
+        PER_CLASS: st.column_config.ProgressColumn(
+            PM_LABEL, format="%.2f", min_value=0, max_value=float(pm[PER_CLASS].max() or 1))})
+
+with tab_rate:
+    st.markdown("**Xếp hạng giáo viên theo % hoàn thành**")
+    st.caption("Công thức: hoàn thành ÷ lượt giao của học sinh.")
     st.dataframe(ranked(c.by_teacher[["Giáo viên", "Môn dạy", "Lượt giao", "Hoàn thành", RATE]], RATE),
-                 hide_index=True, height=420, column_config={
-        RATE: hc.progress_col()})
+                 hide_index=True, height=520, column_config={RATE: hc.progress_col()})
 
 st.subheader("Chi tiết một giáo viên", icon=":material/search:")
 gv = st.selectbox("Chọn giáo viên", sorted(c.by_teacher["Giáo viên"]), key="gv_detail")
