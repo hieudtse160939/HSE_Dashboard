@@ -8,6 +8,7 @@ import streamlit as st
 
 RATE = "Tỷ lệ (%)"
 SCORE = "Điểm xếp hạng"
+PER_MONTH = "Bài / lớp / tháng"
 W_RATE = 60  # % trọng số tỷ lệ hoàn thành trong điểm xếp hạng GV mặc định
 LESSON_COLS = {"GVBM", "Môn", "Lớp", "Tên bài dạy", "Si_So_HS", "SL_Hoan_Thanh"}
 STUDENT_COLS = {"Lớp", "Học sinh", "Môn", "GVBM", "Tong_Bai_Giao", "Da_Nop"}

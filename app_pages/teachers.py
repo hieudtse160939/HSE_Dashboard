@@ -2,7 +2,7 @@ import streamlit as st
 
 import hse_charts as hc
 import hse_data as hd
-from hse_data import RATE, SCORE
+from hse_data import PER_MONTH, RATE, SCORE
 
 c = st.session_state.hse
 L, low, high = c.L, c.low, c.high
@@ -25,6 +25,21 @@ with st.container(border=True):
                 SCORE, format="%.1f", help=f"{c.w_rate}% tỷ lệ hoàn thành + {100 - c.w_rate}% khối lượng giao bài (thang 0–100)"),
             "Bài dưới ngưỡng": st.column_config.NumberColumn(
                 f"Bài dưới {low}%", help="Số bài dạy có tỷ lệ hoàn thành dưới ngưỡng cảnh báo")})
+
+st.subheader("Hai bảng xếp hạng", icon=":material/leaderboard:")
+t_pm, t_rate = st.columns(2)
+with t_pm.container(border=True):
+    st.markdown("**Xếp hạng theo số bài / lớp / tháng**")
+    st.caption(f"= số bài ÷ số lớp ÷ {c.months} tháng. Cho thấy mức độ giao bài đều đặn, không phụ thuộc giáo viên dạy ít hay nhiều lớp.")
+    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_MONTH]]
+                 .sort_values(PER_MONTH, ascending=False), hide_index=True, height=420, column_config={
+        PER_MONTH: st.column_config.NumberColumn(PER_MONTH, format="%.2f")})
+with t_rate.container(border=True):
+    st.markdown("**Xếp hạng theo % hoàn thành**")
+    st.caption("= hoàn thành ÷ lượt giao của học sinh.")
+    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Lượt giao", "Hoàn thành", RATE]]
+                 .sort_values(RATE, ascending=False), hide_index=True, height=420, column_config={
+        RATE: hc.progress_col()})
 
 st.subheader("Chi tiết một giáo viên", icon=":material/search:")
 gv = st.selectbox("Chọn giáo viên", sorted(c.by_teacher["Giáo viên"]), key="gv_detail")
