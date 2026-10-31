@@ -92,8 +92,6 @@ with st.sidebar:
                           help="Dưới mức thứ nhất là cảnh báo; từ mức thứ hai trở lên là đạt.")
     w_rate = st.slider("Tỷ trọng tỷ lệ hoàn thành khi xếp hạng GV (%)", 0, 100, hd.W_RATE, step=5,
                        key="f_w_rate", help="Phần còn lại tính theo khối lượng giao bài. 100 = chỉ xếp theo tỷ lệ; 0 = chỉ xếp theo khối lượng.")
-    months = st.number_input("Số tháng của báo cáo", min_value=1, max_value=12, value=1, step=1, key="f_months",
-                             help="Báo cáo HSE không có cột ngày. Nhập số tháng báo cáo bao phủ để tính số bài / lớp / tháng.")
 
 
 def apply_filters(df):
@@ -117,7 +115,7 @@ L[RATE] = hd.rate(L["Hoàn thành"], L["Lượt giao"])
 L["_low"] = (L[RATE] < low).astype(int)
 
 ctx = SimpleNamespace(
-    lessons=lessons, assign=assign, mains=mains, L=L, low=low, high=high, w_rate=w_rate, months=months,
+    lessons=lessons, assign=assign, mains=mains, L=L, low=low, high=high, w_rate=w_rate,
     filtered=any([sel_grades, sel_classes, sel_subjects, sel_teachers]),
     sel_grades=sel_grades, sel_classes=sel_classes, sel_subjects=sel_subjects, sel_teachers=sel_teachers,
 )
@@ -136,7 +134,7 @@ if not L.empty:
         ctx.by_teacher["Môn phân công"] = ctx.by_teacher["Giáo viên"].map(assigned).fillna("")
     ctx.by_teacher["Số lớp"] = ctx.by_teacher["Giáo viên"].map(L.groupby("Giáo viên")["Lớp"].nunique())
     hd.add_score(ctx.by_teacher, w_rate / 100)
-    ctx.by_teacher[hd.PER_MONTH] = (ctx.by_teacher["Số bài"] / ctx.by_teacher["Số lớp"].clip(lower=1) / months).round(2)
+    ctx.by_teacher[hd.PER_CLASS] = (ctx.by_teacher["Số bài"] / ctx.by_teacher["Số lớp"].clip(lower=1)).round(2)
     ctx.by_subject = hd.summarize(L, ["Môn"])
     ctx.by_grade = hd.summarize(L, ["Khối"])
     ctx.by_cls_subj = hd.summarize(L, ["Khối", "Lớp", "Môn"])
@@ -150,7 +148,7 @@ st.session_state.hse = ctx
 # -----------------------------------------------------------------------------
 if not L.empty:
     with st.sidebar:
-        tcols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, hd.SCORE, hd.PER_MONTH, "Bài dưới ngưỡng"]
+        tcols = ["Giáo viên", "Môn dạy", "Số lớp", "Số bài", "Lượt giao", "Hoàn thành", RATE, hd.SCORE, hd.PER_CLASS, "Bài dưới ngưỡng"]
         tcols += [col for col in ("Môn phân công", "Chủ nhiệm / vai trò") if col in ctx.by_teacher.columns]
         export = {
             "Lop_Mon": ctx.by_cls_subj,

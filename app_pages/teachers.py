@@ -2,7 +2,7 @@ import streamlit as st
 
 import hse_charts as hc
 import hse_data as hd
-from hse_data import PER_MONTH, RATE, SCORE
+from hse_data import PER_CLASS, RATE, SCORE
 
 c = st.session_state.hse
 L, low, high = c.L, c.low, c.high
@@ -29,11 +29,11 @@ with st.container(border=True):
 st.subheader("Hai bảng xếp hạng", icon=":material/leaderboard:")
 t_pm, t_rate = st.columns(2)
 with t_pm.container(border=True):
-    st.markdown("**Xếp hạng theo số bài / lớp / tháng**")
-    st.caption(f"= số bài ÷ số lớp ÷ {c.months} tháng. Cho thấy mức độ giao bài đều đặn, không phụ thuộc giáo viên dạy ít hay nhiều lớp.")
-    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_MONTH]]
-                 .sort_values(PER_MONTH, ascending=False), hide_index=True, height=420, column_config={
-        PER_MONTH: st.column_config.NumberColumn(PER_MONTH, format="%.2f")})
+    st.markdown("**Xếp hạng theo số bài / lớp**")
+    st.caption("= số bài ÷ số lớp. Cho thấy mức độ giao bài đều đặn, không phụ thuộc giáo viên dạy ít hay nhiều lớp.")
+    st.dataframe(c.by_teacher[["Giáo viên", "Môn dạy", "Số lớp", "Số bài", PER_CLASS]]
+                 .sort_values(PER_CLASS, ascending=False), hide_index=True, height=420, column_config={
+        PER_CLASS: st.column_config.NumberColumn(PER_CLASS, format="%.2f")})
 with t_rate.container(border=True):
     st.markdown("**Xếp hạng theo % hoàn thành**")
     st.caption("= hoàn thành ÷ lượt giao của học sinh.")
